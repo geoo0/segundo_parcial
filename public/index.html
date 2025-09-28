@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Restaurante – Órdenes</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f7f7f9; }
+    .card { border-radius: 1rem; }
+    .pointer { cursor: pointer; }
+    .status-badge { text-transform: capitalize; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="#">Restaurante</a>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <input id="apiBaseInput" class="form-control form-control-sm" style="width: 320px" placeholder="API Base (p. ej. https://tu-app.onrender.com/api)" />
+        <button id="saveApiBaseBtn" class="btn btn-sm btn-outline-light">Guardar API</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <!-- Alerts -->
+    <div id="alertPlaceholder"></div>
+
+    <!-- Autenticación / Registro -->
+    <div class="row g-4" id="authRow">
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Registro de cliente</h5>
+            <form id="formRegistro" class="mt-3">
+              <div class="mb-3">
+                <label class="form-label">Nombre</label>
+                <input type="text" class="form-control" name="nombre" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Teléfono</label>
+                <input type="text" class="form-control" name="telefono" required>
+              </div>
+              <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit">Registrar</button>
+                <button class="btn btn-outline-secondary" type="reset">Limpiar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Acceso de cliente</h5>
+            <form id="formLogin" class="mt-3">
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Teléfono</label>
+                <input type="text" class="form-control" name="telefono" required>
+              </div>
+              <div class="d-flex gap-2 align-items-center">
+                <button class="btn btn-success" type="submit">Entrar</button>
+                <small class="text-muted">(Simula login por email + teléfono)</small>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel del cliente (visible tras login) -->
+    <div id="panelCliente" class="hidden">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h4 class="mb-0">Órdenes de <span id="clienteNombre"></span></h4>
+          <div class="text-muted small">ID Cliente: <span id="clienteId"></span> · <span id="clienteEmail"></span></div>
+        </div>
+        <div>
+          <button id="btnSalir" class="btn btn-outline-danger btn-sm">Salir</button>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-12 col-lg-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Nueva orden</h5>
+              <form id="formNuevaOrden" class="mt-3">
+                <div class="mb-3">
+                  <label class="form-label">Platillo</label>
+                  <input type="text" class="form-control" name="platillo_nombre" placeholder="Ej. Tacos al Pastor" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Notas (opcional)</label>
+                  <textarea class="form-control" name="notes" rows="3" placeholder="Sin cebolla, por favor"></textarea>
+                </div>
+                <button class="btn btn-primary" type="submit">Crear orden</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-lg-8">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <h5 class="card-title mb-0">Listado de órdenes</h5>
+                <button id="btnRefrescar" class="btn btn-sm btn-outline-secondary">Refrescar</button>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Platillo</th>
+                      <th>Notas</th>
+                      <th>Estado</th>
+                      <th>Creado</th>
+                      <th class="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbodyOrdenes">
+                    <tr><td colspan="6" class="text-center text-muted">Sin pedidos aún…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const DEFAULT_API_BASE = (location.origin + '/api');
+    const apiBase = {
+      get() {
+        return localStorage.getItem('API_BASE') || DEFAULT_API_BASE;
+      },
+      set(v) {
+        localStorage.setItem('API_BASE', v);
+      }
+    };
+
+    const apiBaseInput = document.getElementById('apiBaseInput');
+    const saveApiBaseBtn = document.getElementById('saveApiBaseBtn');
+    apiBaseInput.value = apiBase.get();
+    saveApiBaseBtn.addEventListener('click', () => {
+      const v = apiBaseInput.value.trim();
+      if (!v) return alert('Ingresa una URL válida');
+      apiBase.set(v);
+      showAlert('API Base guardada: ' + v, 'success');
+    });
+    const alertPlaceholder = document.getElementById('alertPlaceholder');
+    function showAlert(message, type = 'info', timeout = 3500) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+          ${message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>`;
+      alertPlaceholder.appendChild(wrapper);
+      if (timeout) setTimeout(() => {
+        const alertEl = bootstrap.Alert.getOrCreateInstance(wrapper.querySelector('.alert'));
+        alertEl.close();
+      }, timeout);
+    }
+
+    function statusBadge(estado) {
+      const map = { pending: 'secondary', preparing: 'warning', delivered: 'success' };
+      const color = map[estado] || 'secondary';
+      return `<span class="badge text-bg-${color} status-badge">${estado}</span>`;
+    }
+
+    function nextEstado(estado) {
+      if (estado === 'pending') return 'preparing';
+      if (estado === 'preparing') return 'delivered';
+      return 'delivered';
+    }
+
+    const auth = {
+      set(cliente) { localStorage.setItem('CLIENTE', JSON.stringify(cliente)); },
+      get() { try { return JSON.parse(localStorage.getItem('CLIENTE') || 'null'); } catch { return null; } },
+      clear() { localStorage.removeItem('CLIENTE'); }
+    };
+
+
+    async function api(path, options = {}) {
+      const url = apiBase.get().replace(/\/$/, '') + path;
+      const resp = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options
+      });
+      const contentType = resp.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await resp.json() : await resp.text();
+      if (!resp.ok) {
+        const msg = (data && data.error) ? data.error : (typeof data === 'string' ? data : 'Error');
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    const authRow = document.getElementById('authRow');
+    const panelCliente = document.getElementById('panelCliente');
+    const clienteNombre = document.getElementById('clienteNombre');
+    const clienteId = document.getElementById('clienteId');
+    const clienteEmail = document.getElementById('clienteEmail');
+    const tbodyOrdenes = document.getElementById('tbodyOrdenes');
+    const btnRefrescar = document.getElementById('btnRefrescar');
+    const btnSalir = document.getElementById('btnSalir');
+
+    document.getElementById('formRegistro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = Object.fromEntries(fd.entries());
+      try {
+        const nuevo = await api('/clientes/registrar', { method: 'POST', body: JSON.stringify(payload) });
+        showAlert('Cliente registrado: ' + nuevo.email, 'success');
+        e.target.reset();
+      } catch (err) {
+        showAlert('No se pudo registrar: ' + err.message, 'danger');
+      }
+    });
+
+    document.getElementById('formLogin').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = Object.fromEntries(fd.entries());
+      try {
+        const cli = await api('/clientes/login', { method: 'POST', body: JSON.stringify(payload) });
+        auth.set(cli);
+        showAlert('¡Bienvenido, ' + cli.nombre + '!', 'success');
+        e.target.reset();
+        renderCliente();
+        await cargarOrdenes();
+      } catch (err) {
+        showAlert('Login fallido: ' + err.message, 'danger');
+      }
+    });
+
+    document.getElementById('formNuevaOrden').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const cliente = auth.get();
+      if (!cliente) return showAlert('Debes iniciar sesión', 'warning');
+      const fd = new FormData(e.target);
+      const payload = Object.fromEntries(fd.entries());
+      payload.cliente_id = cliente.id;
+      try {
+        await api('/ordenes', { method: 'POST', body: JSON.stringify(payload) });
+        showAlert('Orden creada correctamente', 'success');
+        e.target.reset();
+        await cargarOrdenes();
+      } catch (err) {
+        showAlert('No se pudo crear la orden: ' + err.message, 'danger');
+      }
+    });
+
+    async function cargarOrdenes() {
+      const cliente = auth.get();
+      if (!cliente) return;
+      try {
+        const lista = await api(`/ordenes/${cliente.id}`);
+        renderOrdenes(lista);
+      } catch (err) {
+        showAlert('Error al cargar órdenes: ' + err.message, 'danger');
+      }
+    }
+
+    btnRefrescar.addEventListener('click', cargarOrdenes);
+    async function avanzarEstado(orden) {
+      const nuevoEstado = nextEstado(orden.estado);
+      if (orden.estado === 'delivered') return;
+      try {
+        await api(`/ordenes/${orden.id}/estado`, {
+          method: 'PUT',
+          body: JSON.stringify({ estado: nuevoEstado })
+        });
+        showAlert(`Orden #${orden.id}: estado → ${nuevoEstado}`, 'success');
+        await cargarOrdenes();
+      } catch (err) {
+        showAlert('No se pudo actualizar el estado: ' + err.message, 'danger');
+      }
+    }
+    function renderCliente() {
+      const c = auth.get();
+      if (!c) {
+        authRow.classList.remove('hidden');
+        panelCliente.classList.add('hidden');
+        return;
+      }
+      authRow.classList.add('hidden');
+      panelCliente.classList.remove('hidden');
+      clienteNombre.textContent = c.nombre;
+      clienteId.textContent = c.id;
+      clienteEmail.textContent = c.email;
+    }
+
+    function renderOrdenes(lista) {
+      if (!Array.isArray(lista) || lista.length === 0) {
+        tbodyOrdenes.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Sin pedidos aún…</td></tr>';
+        return;
+      }
+
+      tbodyOrdenes.innerHTML = lista.map(o => `
+        <tr>
+          <td>${o.id}</td>
+          <td>${o.platillo_nombre}</td>
+          <td>${o.notes ? o.notes : '<span class="text-muted">—</span>'}</td>
+          <td>${statusBadge(o.estado)}</td>
+          <td>${new Date(o.creado).toLocaleString()}</td>
+          <td class="text-end">
+            ${o.estado !== 'delivered' ? `<button class="btn btn-sm btn-outline-primary" data-action="advance" data-id="${o.id}">Avanzar a "${nextEstado(o.estado)}"</button>` : '<span class="text-muted small">Completada</span>'}
+          </td>
+        </tr>
+      `).join('');
+
+      tbodyOrdenes.querySelectorAll('button[data-action="advance"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = Number(btn.getAttribute('data-id'));
+          const ord = lista.find(x => x.id === id);
+          if (ord) avanzarEstado(ord);
+        });
+      });
+    }
+
+    btnSalir.addEventListener('click', () => {
+      auth.clear();
+      renderCliente();
+      showAlert('Sesión cerrada', 'info');
+    });
+    (async function init() {
+      renderCliente();
+      const c = auth.get();
+      if (c) await cargarOrdenes();
+    })();
+  </script>
+</body>
+</html>
